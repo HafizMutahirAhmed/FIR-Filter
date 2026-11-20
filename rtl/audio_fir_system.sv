@@ -9,6 +9,10 @@
 //   LED[1:0]: shows the selected mode
 //   LED[15:8]: level meter (bar graph) of the filtered output
 //
+// AUD_PWM is driven open-drain (0 or high-Z), as the Nexys A7 reference
+// manual asks: the board has a pull-up to a clean analog 3.3 V rail that
+// makes the '1' level.
+//
 // All system parameters live here and are passed down to the submodules.
 // Port names match constraints/fir_audio_nexys7.xdc exactly.
 // =============================================================================
@@ -18,7 +22,8 @@ module audio_fir_system #(
     parameter int    CLK_DIV        = 40,   // 100 MHz / 40 = 2.5 MHz mic clock
     parameter int    DECIM          = 64,   // 2.5 MHz / 64 = 39,062.5 Hz samples
     parameter int    N_TAPS         = 31,   // FIR length
-    parameter int    OUT_GAIN_SHIFT = 1,    // PWM output gain = 2^OUT_GAIN_SHIFT
+    parameter int    MIC_GAIN_SHIFT = 4,    // mic gain = 2^MIC_GAIN_SHIFT (0..4), see pdm_decimator
+    parameter int    OUT_GAIN_SHIFT = 2,    // PWM output gain = 2^OUT_GAIN_SHIFT
     parameter string LP_FILE        = "lowpass.mem",
     parameter string HP_FILE        = "highpass.mem",
     parameter string BYP_FILE       = "bypass.mem"
@@ -29,7 +34,7 @@ module audio_fir_system #(
     input  logic        M_DATA,      // mic PDM data
     output logic        M_CLK,       // mic clock (2.5 MHz)
     output logic        M_LRSEL,     // mic channel select
-    output logic        AUD_PWM,     // audio PWM output
+    output wire         AUD_PWM,     // audio PWM output (open-drain)
     output logic        AUD_SD,      // audio amp enable
     output logic [15:0] LED
 );
@@ -58,7 +63,8 @@ module audio_fir_system #(
 
     pdm_decimator #(
         .CLK_DIV(CLK_DIV),
-        .DECIM  (DECIM)
+        .DECIM         (DECIM),
+        .MIC_GAIN_SHIFT(MIC_GAIN_SHIFT)
     ) u_pdm (
         .clk         (clk),
         .rst         (rst),
@@ -88,15 +94,20 @@ module audio_fir_system #(
     );
 
     // ---------------- PWM audio out ------------------------------------------
+    logic aud_pwm_bit;
+
     pwm_out #(
         .OUT_GAIN_SHIFT(OUT_GAIN_SHIFT)
     ) u_pwm (
         .clk    (clk),
         .rst    (rst),
         .sample (fir_out),
-        .aud_pwm(AUD_PWM),
+        .aud_pwm(aud_pwm_bit),
         .aud_sd (AUD_SD)
     );
+
+    // open-drain: drive low for '0', release (high-Z) for '1'
+    assign AUD_PWM = aud_pwm_bit ? 1'bz : 1'b0;
 
     // ---------------- LEDs ----------------------------------------------------
     // Level meter: |fir_out| compared with 8 thresholds (2048, 4096, ... 16384).

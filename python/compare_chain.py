@@ -56,7 +56,9 @@ def check_pwm(pwm, fir_sw):
     loaded, high = pwm[:, 0], pwm[:, 1]
     bad_duty = int(np.count_nonzero(high != pwm_duty_model(loaded)))
 
-    # the loaded values must walk through the software FIR output in order
+    # the loaded values must walk through the software FIR output in order.
+    # Before the first FIR output the PWM loads fir_out's reset value 0.
+    fir_sw = np.concatenate(([0], fir_sw))
     j, bad_order = 0, 0
     for v in loaded:
         while j < len(fir_sw) and fir_sw[j] != v:

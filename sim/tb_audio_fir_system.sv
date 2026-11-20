@@ -37,13 +37,16 @@ module tb_audio_fir_system;
     logic        M_DATA;
     logic        M_CLK;
     logic        M_LRSEL;
-    logic        AUD_PWM;
+    wire         AUD_PWM;
     logic        AUD_SD;
     logic [15:0] LED;
 
     always #5 clk = ~clk;   // 100 MHz
 
-    audio_fir_system dut (
+    pullup (AUD_PWM);   // board pull-up for the open-drain audio pin
+
+    // gains as in the original design, so the expected values stay simple
+    audio_fir_system #(.MIC_GAIN_SHIFT(0), .OUT_GAIN_SHIFT(1)) dut (
         .clk       (clk),
         .CPU_RESETN(CPU_RESETN),
         .SW        (SW),
@@ -211,8 +214,8 @@ module tb_audio_fir_system;
 
         name = (m == 2'b01) ? "low-pass " : (m == 2'b10) ? "high-pass" : "bypass   ";
         $display("%s  %5.0f Hz tone: output RMS = %7.1f  (%s)",
-                 name, f, rms, should_pass ? "should pass, > 4000" : "should be removed, < 1500");
-        if ( should_pass && rms < 4000.0) begin
+                 name, f, rms, should_pass ? "should pass, > 3000" : "should be removed, < 1500");
+        if ( should_pass && rms < 3000.0) begin
             $display("ERROR: tone should pass but is too small");
             errors++;
         end

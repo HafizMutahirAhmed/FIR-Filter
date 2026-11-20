@@ -36,13 +36,16 @@ module tb_chain_audio;
     logic        M_DATA;
     logic        M_CLK;
     logic        M_LRSEL;
-    logic        AUD_PWM;
+    wire         AUD_PWM;
     logic        AUD_SD;
     logic [15:0] LED;
 
     always #5 clk = ~clk;   // 100 MHz
 
-    audio_fir_system dut (
+    pullup (AUD_PWM);   // board pull-up for the open-drain audio pin
+
+    // gains as in the original design, so the expected values stay simple
+    audio_fir_system #(.MIC_GAIN_SHIFT(0), .OUT_GAIN_SHIFT(1)) dut (
         .clk       (clk),
         .CPU_RESETN(CPU_RESETN),
         .SW        (SW),

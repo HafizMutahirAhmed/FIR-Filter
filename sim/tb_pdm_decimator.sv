@@ -10,8 +10,9 @@
 //   2. m_clk period = 400 ns (2.5 MHz) with 200 ns high / 200 ns low.
 //   3. sample_valid is one clock wide and comes every 2560 clocks
 //      (39,062.5 Hz).
-//   4. Exact PCM values for fixed bit patterns (the number of ones in every
-//      64-bit window is known, whatever the window alignment):
+//   4. Exact PCM values for fixed bit patterns (the CIC3 output in steady
+//      state equals 2^18 * mean(+/-1 bits) whatever the window alignment,
+//      scaled by >>> 4 with MIC_GAIN_SHIFT = 0):
 //        all 0      ->  0 ones -> -16384
 //        1000 ...   -> 16 ones ->  -8192
 //        1010 ...   -> 32 ones ->      0
@@ -104,7 +105,8 @@ module tb_pdm_decimator;
     task automatic check_pattern(input logic [3:0] p, input int expected, input string name);
         logic signed [15:0] v;
         pattern = p;
-        next_sample(v);                 // first windows may contain old bits
+        next_sample(v);                 // CIC3 memory spans 3 windows: skip them
+        next_sample(v);
         next_sample(v);
         for (int i = 0; i < 4; i++) begin
             next_sample(v);
@@ -181,7 +183,7 @@ module tb_pdm_decimator;
         for (int i = 0; i < n_file_bits / 64; i++) begin
             next_sample(v);
             $fwrite(fd_out, "%0d\n", v);
-            if (i >= 2) begin   // skip the first windows (mix of old and new bits)
+            if (i >= 3) begin   // skip the first windows (CIC3 settling)
                 if (v > peak_pos) peak_pos = v;
                 if (v < peak_neg) peak_neg = v;
             end

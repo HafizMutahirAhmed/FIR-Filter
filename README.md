@@ -30,8 +30,8 @@ pass and which are blocked. Here they are designed in Python with
   +-----+   <-------------+
   | MEMS|                 |
   | mic | --M_DATA (PDM)-->  pdm_decimator  --16-bit PCM @ 39,062.5 Hz-->  fir_filter  ---> pwm_out ---> AUD_PWM ---> audio jack
-  +-----+                 |  (count 1s over |      sample_valid           (31 taps,        (8-bit PWM,
-                          |   64 bits)      |                              1 x DSP48E1)      ~390 kHz)
+  +-----+                 |  (3rd-order CIC,|      sample_valid           (31 taps,        (8-bit PWM,       (open-drain)
+                          |   R = 64)       |                              1 x DSP48E1)      ~390 kHz)
                                                                               ^
             SW[1:0] --> 2-FF sync --> mode ---------------------------------- +---> coeff_rom (3 sets from .mem files)
                                          \--> LED[1:0]
@@ -393,8 +393,12 @@ by constant`, and `DRC CFGBVS-1 Missing CFGBVS and CONFIG_VOLTAGE`.
 4. **LED[1:0]** shows the mode. **LED[15:8]** is a level bar: more LEDs light up
    for louder output.
 5. Press **CPU_RESET** (red button) to reset the design.
-6. If the sound is too quiet or clips, change `OUT_GAIN_SHIFT` in
-   `audio_fir_system.sv` (0 = quieter, 2 = louder) and rebuild.
+6. If the sound is too quiet or clips, change the gains in
+   `audio_fir_system.sv` and rebuild. Each step is x2 (6 dB):
+   - `MIC_GAIN_SHIFT` (0..4, default 4): gain after the CIC decimator, before
+     the FIR. 4 = full CIC resolution.
+   - `OUT_GAIN_SHIFT` (default 2): gain in front of the 8-bit PWM. Lower it if
+     loud sounds distort, raise it if speech is too quiet.
 
 ---
 
@@ -420,17 +424,18 @@ All pins are from Digilent's `Nexys-A7-100T-Master.xdc`. All use LVCMOS33.
 
 ## 7. Limitations
 
-- **Crude decimator:** counting ones over 64 bits is a 1st-order (sinc¹)
-  filter. It gives only 65 levels (about 6 bits) and lets some high-frequency
-  noise alias into the audio band. A 3rd-order CIC decimator would be better
-  (not implemented).
+- **Decimator:** a 3rd-order CIC (sinc³, R = 64) with no compensation
+  filter. Its passband droops: about -3 dB at 10 kHz. (An earlier version
+  counted ones over 64 bits, a sinc¹ filter with only ~6 bits and strong
+  noise aliasing.)
 - **8-bit PWM output:** only 256 output levels, so you will hear some hiss.
 - **Mono:** one microphone, one output channel.
 - **Mic sampling edge:** with `M_LRSEL = 0`, data is sampled just before the
   rising edge of `M_CLK`. If the output is only noise on your board, check the
   microphone timing in the Digilent Nexys A7 reference manual.
-- **Audio output drive:** `AUD_PWM` is driven push-pull (0/1). The Digilent
-  reference manual describes the audio output in more detail; check it if the
-  sound is distorted.
+- **Audio output drive:** `AUD_PWM` is open-drain (driven 0 or released to
+  high-Z), as the Digilent reference manual asks. The board's pull-up to the
+  analog 3.3 V rail makes the '1' level. The top-level testbenches add a
+  `pullup` on the pin to model this.
 - **Bypass** is a 15-sample (≈0.38 ms) delayed copy of the input, scaled by
   32767/32768.

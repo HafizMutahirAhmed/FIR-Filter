@@ -9,7 +9,8 @@ SOFTWARE side of the whole-chain audio verification
    -> sim/vectors/chain_pdm.txt   (one bit per line, this is the input for
                                    BOTH software and hardware)
 3. Bit-exact software models of every block, for bypass/low-pass/high-pass:
-     pdm_decimator : pcm[j] = (ones in bits[64j .. 64j+63] - 32) * 512
+     pdm_decimator : 3rd-order CIC, R = 64, x = +/-1, 21-bit wrap-around
+                     registers, pcm = sat16(c3 >> (4 - MIC_GAIN_SHIFT))
      fir_filter    : same model as prepare_audio.py
      pwm_out       : duty = sat8((fir >> 8) << 1) + 128
    -> sim/vectors/chain_expected_pcm.txt
@@ -33,7 +34,9 @@ from prepare_audio import (load_wav_as_fpga_samples, read_mem, fir_model,
 
 DECIM = 64
 PDM_LEVEL = 0.8      # peak level of the audio inside the PDM stream (<1 for a stable modulator)
-OUT_GAIN_SHIFT = 1
+OUT_GAIN_SHIFT = 1   # tb_chain_audio sets OUT_GAIN_SHIFT = 1 ...
+MIC_GAIN_SHIFT = 0   # ... and MIC_GAIN_SHIFT = 0
+CIC_W = 21           # register width in pdm_decimator.sv (3*log2(64) + 3)
 
 
 def to_pdm(x16):
@@ -49,11 +52,24 @@ def to_pdm(x16):
     return bits
 
 
+def wrap(v, w=CIC_W):
+    """Two's complement wrap-around to w bits (like a w-bit register)."""
+    v = np.asarray(v, dtype=np.int64) & ((1 << w) - 1)
+    return np.where(v >= (1 << (w - 1)), v - (1 << w), v)
+
+
 def decimator_model(bits):
-    """Bit-exact model of pdm_decimator.sv: count ones in each 64-bit window."""
+    """Bit-exact model of pdm_decimator.sv: 3rd-order CIC, R = 64."""
     n = len(bits) // DECIM
-    ones = bits[:n * DECIM].reshape(n, DECIM).sum(axis=1).astype(np.int64)
-    return (ones - DECIM // 2) * 512
+    x = 2 * bits[:n * DECIM].astype(np.int64) - 1          # bit 1 -> +1, 0 -> -1
+    i1 = wrap(np.cumsum(x))
+    i2 = wrap(np.cumsum(i1))
+    i3 = wrap(np.cumsum(i2))
+    s = i3[DECIM - 1::DECIM]                               # i3 at the end of each window
+    c = s
+    for _ in range(3):                                     # three combs, start state 0
+        c = wrap(c - np.concatenate(([0], c[:-1])))
+    return np.clip(c >> (4 - MIC_GAIN_SHIFT), -32768, 32767)
 
 
 def pwm_duty_model(fir):
