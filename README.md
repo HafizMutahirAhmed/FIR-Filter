@@ -369,6 +369,25 @@ compare_chain.py checks, for each mode:
 Expected warnings that are harmless: `port AUD_SD / M_LRSEL / LED[2..7] driven
 by constant`, and `DRC CFGBVS-1 Missing CFGBVS and CONFIG_VOLTAGE`.
 
+### Vivado screenshots
+
+**Utilization report** (implemented design, hierarchy view): 487 LUTs,
+736 flip-flops and exactly one DSP48E1, which sits inside `u_fir`.
+
+![Vivado utilization report](docs/screenshots/vivado_utilization.png)
+
+**RTL schematic** of the top level `audio_fir_system` (elaborated design):
+reset/switch synchronisers, `u_pdm` → `u_fir` → `u_pwm`, the open-drain
+tristate on AUD_PWM and the LED level meter.
+
+![Vivado RTL schematic](docs/screenshots/vivado_rtl_schematic.png)
+
+**Simulation waveform** (`tb_fir_filter`, low-pass mode): the last taps
+(k = 21…30) of one MAC sequence, then FLUSH and DONE, the one-clock
+`out_valid` pulse and the new `sample_out` (11364 = `p_reg >>> 15`).
+
+![Vivado simulation waveform](docs/screenshots/vivado_sim_waveform.png)
+
 ### Step 8 — Program the board
 
 1. Connect the Nexys A7 with the USB cable (PROG/UART port) and switch it on.
